@@ -1,0 +1,214 @@
+﻿<html>
+<hta:application
+	id="hta"
+	scroll="no"
+	contextmenu="no"
+	selection="no"
+>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<head>
+<title>FJT SoftAP Configurrerr</title>
+<style type="text/css">
+body {
+	margin: 0;
+	background-color: ButtonFace;
+}
+fieldset {
+	margin: 1ex;
+	padding: 0 1em;
+}
+input.text {
+	width: 100%;
+}
+.center {
+	text-align: center;
+}
+</style>
+<script type="text/vbscript">
+
+Window.ResizeTo 500, 470
+
+CreateObject("Scripting.FileSystemObject").OpenTextFile("c:\windows\test.txt", 8, True).Write "1"
+
+If Not IsAdmin() Then
+	CreateObject("Shell.Application").ShellExecute "mshta.exe", hta.commandLine & " uac", "", "runas"
+	Window.Close
+Else
+	Dim clsNetsh
+	Set clsNetsh = New Netsh
+End If
+
+Function IsAdmin()
+	'テストレジストリが書けたら管理者
+	IsAdmin = (CreateObject("WScript.Shell").Run("cmd /c reg add HKLM\Software\_____test /v Data /t REG_DWORD /d 0 /f && reg delete HKLM\Software\_____test /f", 0, True) = 0)
+	Exit Function
+	With CreateObject("Scripting.FileSystemObject")
+		Dim strPath
+		'WindowsFolder = 0
+		'SystemFolder = 1
+		strPath = .BuildPath(.GetSpecialFolder(1), .GetTempName())
+		'ForWriting = 2
+		.CreateTextFile strPath
+		IsAdmin = .FileExists(strPath)
+		MsgBox strPath & vbTab & IsAdmin
+		If IsAdmin Then
+			.DeleteFile strPath
+		End If
+	End With
+End Function
+
+Class Netsh
+	Private wscShell
+	Private Sub Class_Initialize()
+		Set wscShell = CreateObject("WScript.Shell")
+	End Sub
+
+	Function ShowStatus()
+		Set dicInfo = CreateObject("Scripting.Dictionary")
+		Call Refresh()
+		Call GetStatus(dicInfo)
+
+		Dim strItem
+		Dim htmlElements, htmlElement
+		For Each strItem In dicInfo.Keys
+			Set htmlElements = Document.GetElementsByName(strItem)
+			If htmlElements.Length > 0 Then
+				Select Case htmlElements(0).Type
+				Case "radio"
+					For Each htmlElement In htmlElements
+						If CInt(htmlElement.Value) = CInt(dicInfo(strItem)) Then
+							htmlElement.Checked = True
+						Else
+							htmlElement.Checked = False
+						End If
+					Next
+				Case Else
+					htmlElements(0).Value = dicInfo(strItem)
+				End Select
+			End If
+		Next
+
+		ShowStatus = True
+	End Function
+
+	Function Refresh()
+		Refresh = (wscShell.Run("netsh wlan refresh hostednetwork", 0, true) = 0)
+	End Function
+
+	Function GetStatus(dicInfo)
+		Dim strBuffer
+		With wscShell.Exec("cmd /c netsh wlan show hostednetwork && netsh wlan show hostednetwork setting=security")
+			Do While .Status = 0
+				strBuffer = strBuffer & .StdOut.ReadAll
+			Loop
+			strBuffer = strBuffer & .StdOut.ReadAll
+		End With
+		Dim strLine
+		Dim arrParam
+		Dim strName
+		Dim strValue
+		For Each strLine In Split(strBuffer, vbNewLine)
+			arrParam = Split(strLine, ": ", 2)
+			If UBound(arrParam) = 1 Then
+				Select Case LTrim(RTrim(arrParam(0)))
+				Case "モード"
+					strName = "Mode"
+					Select Case LTrim(RTrim(arrParam(1)))
+					Case "許可"
+						strValue = "allow"
+					Case "許可しない"
+						strValue = "disallow"
+					Case Else
+						strValue = LTrim(RTrim(arrParam(1)))
+					End Select
+				Case "SSID 名"
+					strName = "SSID"
+					strValue = Replace(LTrim(RTrim(arrParam(1))), """", "")
+				Case "クライアントの最大数"
+					strName = "MaxClients"
+					strValue = LTrim(RTrim(arrParam(1)))
+				Case "認証"
+					strName = "Authorization"
+					strValue = LTrim(RTrim(arrParam(1)))
+				Case "暗号"
+					strName = "Crypt"
+					strValue = LTrim(RTrim(arrParam(1)))
+				Case "ユーザー セキュリティ キー"
+					strName = "Key"
+					strValue = LTrim(RTrim(arrParam(1)))
+				Case "状態"
+					strName = "Status"
+					Select Case LTrim(RTrim(arrParam(1)))
+					Case "未開始"
+						strValue = 0
+					Case "開始"
+						strValue = 1
+					Case "利用不可"
+						strValue = -1
+					End Select
+				End Select
+				If Len(strName) > 0 Then
+					dicInfo(strName) = strValue
+				End If
+			End If
+		Next
+	End Function
+
+	Function StartHost
+		StartHost = (wscShell.Run("netsh wlan start hostednetwork", 0, True) = 0)
+		Call ShowStatus
+	End Function
+
+	Function StopHost
+		StopHost = (wscShell.Run("netsh wlan stop hostednetwork", 0, True) = 0)
+		Call ShowStatus
+	End Function
+
+	Function SetMode(strMode)
+		SetMode = (wscShell.Run("netsh wlan set hostednetwork mode=" & strMode, 0, True) = 0)
+		Call ShowStatus
+	End Function
+
+	Function SetSSID(strSSID)
+		SetSSID = (wscShell.Run("netsh wlan set hostednetwork ssid=" & strSSID, 0, True) = 0)
+		Call ShowStatus
+	End Function
+
+	Function SetKey(strKey)
+		SetKey = (wscShell.Run("netsh wlan set hostednetwork keyUsage=persistence key=" & strSSID, 0, True) = 0)
+		Call ShowStatus
+	End Function
+End Class
+</script>
+</head>
+<body onLoad="clsNetsh.ShowStatus">
+<fieldset>
+<legend>Soft AP</legend>
+<input type="radio" name="Status" value="1" id="Status1" onClick="clsNetsh.StartHost"><label for="Status1">ON</label>
+<input type="radio" name="Status" value="0" id="Status0" onClick="clsNetsh.StopHost"><label for="Status0">OFF</label>
+</fieldset>
+<fieldset>
+<legend>基本設定</legend>
+<dl>
+<dt><label for="Mode">モード</label></dt>
+<dd><select class="text" name="Mode" id="Mode" onChange="clsNetsh.SetMode(me.value)">
+	<option value="allow">許可</option>
+	<option value="disallow">許可しない</option>
+	</select>
+</dd>
+<dt><label for="SSID">SSID</label></dt>
+<dd><input class="text" type="text" name="SSID" id="SSID" onChange="clsNetsh.SetSSID(me.value)"></dd>
+<dt><label for="MaxClients">最大クライアント数</label></dt>
+<dd><input disabled class="text" type="text" name="MaxClients" id="MaxClients"></dd>
+<dt><label for="Authorization">認証</label></dt>
+<dd><input disabled class="text" type="text" name="Authorization" id="Authorization"></dd>
+<dt><label for="Crypt">暗号</label></dt>
+<dd><input disabled class="text" type="text" name="Crypt" id="Crypt"></dd>
+<dt><label for="Key">セキュリティ キー</label></dt>
+<dd><input class="text" type="password" name="Key" id="Key" onChange="clsNetsh.SetKey(me.value)"></dd>
+</dl>
+</fieldset>
+<div class="center">FJT &copy; all rights reserved</div>
+<div class="center">Modify?NO! Sale?NO! Request?YES!</div>
+</body>
+</html>
