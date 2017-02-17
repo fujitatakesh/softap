@@ -1,4 +1,6 @@
 # softap
+※最新ビルドの Windows 10 では Soft AP 機能が動作しません。原因調査中です。
+
 Windows の Soft AP 機能の設定画面です。
 netsh で設定できるものを GUI にしました。
 動作には管理者アカウントが必要です。
